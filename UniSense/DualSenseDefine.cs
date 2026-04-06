@@ -1,7 +1,9 @@
-﻿using System.Runtime.InteropServices;
+﻿using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using UnityEngine;
 
-namespace UniSense
+namespace DualForce
 {
     public struct DualSenseGamepadState
     {
@@ -38,20 +40,27 @@ namespace UniSense
     public enum DualSenseTriggerEffectType : byte
     {
         NoResistance = 0,
-        ContinuousResistance,
-        SectionResistance,
-        EffectEx,
-        Calibrate,
+        ContinuousResistance = 1,
+        SectionResistance = 2,
+        EffectEx = 0x26,
+        Calibrate = 0xFC,
     }
     
     [StructLayout(LayoutKind.Explicit)]
-    public struct DualSenseTriggerState
+    public unsafe struct DualSenseTriggerState
     {
+        private const int Size = 10;
+        [FieldOffset(0)] public fixed byte Data[Size];
         [FieldOffset(0)] public DualSenseTriggerEffectType EffectType;
 
         [FieldOffset(1)] public DualSenseContinuousResistanceProperties Continuous;
         [FieldOffset(1)] public DualSenseSectionResistanceProperties Section;
         [FieldOffset(1)] public DualSenseEffectExProperties EffectEx;
+
+        public Span<byte> AsSpan()
+        {
+            return new Span<byte>(Unsafe.AsPointer(ref this), Size);
+        }
     }
 
     public struct DualSenseContinuousResistanceProperties

@@ -1,13 +1,17 @@
-﻿using UniSense.LowLevel;
+using System;
+using System.Runtime.CompilerServices;
+using DualForce.LowLevel;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Controls;
 using UnityEngine.InputSystem.DualShock;
+using UnityEngine.InputSystem.HID;
 using UnityEngine.InputSystem.Layouts;
+using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.Scripting;
 
-namespace UniSense
+namespace DualForce
 {
     [InputControlLayout(
         stateType = typeof(DualSenseHIDInputReport),
@@ -16,14 +20,25 @@ namespace UniSense
 #if UNITY_EDITOR
     [InitializeOnLoad]
 #endif
-    public class DualSenseGamepadHID : DualShockGamepad
+    public class DualSenseGamepadHID : DualShockGamepad, IInputStateCallbackReceiver
     {
         public ButtonControl leftTriggerButton { get; protected set; }
         public ButtonControl rightTriggerButton { get; protected set; }
         public ButtonControl playStationButton { get; protected set; }
-
         public ButtonControl micMuteButton { get; protected set; }
 
+        public Vector3Control Gyroscope { get; protected set; }
+        public Vector3Control Accelerometer { get; protected set; }
+
+        public ButtonControl touch0Active { get; protected set; }
+        public IntegerControl touch0Id { get; protected set; }
+        public Vector2Control touch0Position { get; protected set; }
+        public ButtonControl touch1Active { get; protected set; }
+        public IntegerControl touch1Id { get; protected set; }
+        public Vector2Control touch1Position { get; protected set; }
+        
+        private byte _btSeqNum = 0;
+        private bool _isBt;
 #if UNITY_EDITOR
         static DualSenseGamepadHID()
         {
@@ -57,12 +72,15 @@ namespace UniSense
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         static void Initialize()
         {
+            InputSystem.RegisterProcessor<DualSenseTouchProcessor>();
+            InputSystem.RegisterProcessor<DualSenseTouchActiveProcessor>();
+            
             InputSystem.RegisterLayout<DualSenseGamepadHID>(
                 matches: new InputDeviceMatcher()
                     .WithInterface("HID")
-                    .WithManufacturer("Sony.+Entertainment")
                     .WithCapability("vendorId", 0x54C)
-                    .WithCapability("productId", 0xCE6));
+                    .WithCapability("productId", 0xCE6)
+                );
         }
 
         protected override void FinishSetup()
@@ -71,7 +89,19 @@ namespace UniSense
             rightTriggerButton = GetChildControl<ButtonControl>("rightTriggerButton");
             playStationButton = GetChildControl<ButtonControl>("systemButton");
             micMuteButton = GetChildControl<ButtonControl>("micMuteButton");
+            Gyroscope = GetChildControl<Vector3Control>("gyro");
+            Accelerometer = GetChildControl<Vector3Control>("accel");
 
+            touch0Active = GetChildControl<ButtonControl>("touch0Active");
+            touch0Id = GetChildControl<IntegerControl>("touch0Id");
+            touch0Position = GetChildControl<Vector2Control>("touch0Position");
+            touch1Active = GetChildControl<ButtonControl>("touch1Active");
+            touch1Id = GetChildControl<IntegerControl>("touch1Id");
+            touch1Position = GetChildControl<Vector2Control>("touch1Position");
+
+            var hidDeviceDescriptor = HID.HIDDeviceDescriptor.FromJson(description.capabilities);
+            _isBt = hidDeviceDescriptor.inputReportSize > 64;
+            
             base.FinishSetup();
         }
 
@@ -84,12 +114,12 @@ namespace UniSense
             if (!MotorHasValue && !LeftTriggerHasValue && !RightTriggerHasValue)
                 return;
 
-            var command = DualSenseHIDOutputReport.Create();
+            var command = DualSenseUSBHIDOutputReport.Create();
             command.ResetMotorSpeeds();
             command.SetLeftTriggerState(new DualSenseTriggerState());
             command.SetRightTriggerState(new DualSenseTriggerState());
 
-            ExecuteCommand(ref command);
+            PrecessAndExecuteCommand(ref command);
         }
 
         public override void ResetHaptics()
@@ -97,12 +127,12 @@ namespace UniSense
             if (!MotorHasValue && !LeftTriggerHasValue && !RightTriggerHasValue)
                 return;
 
-            var command = DualSenseHIDOutputReport.Create();
+            var command = DualSenseUSBHIDOutputReport.Create();
             command.ResetMotorSpeeds();
             command.SetLeftTriggerState(new DualSenseTriggerState());
             command.SetRightTriggerState(new DualSenseTriggerState());
 
-            ExecuteCommand(ref command);
+            PrecessAndExecuteCommand(ref command);
 
             m_HighFrequenceyMotorSpeed = null;
             m_LowFrequencyMotorSpeed = null;
@@ -114,11 +144,11 @@ namespace UniSense
 
         public void ResetTriggersState()
         {
-            var command = DualSenseHIDOutputReport.Create();
+            var command = DualSenseUSBHIDOutputReport.Create();
             command.SetRightTriggerState(m_rightTriggerState.Value);
             command.SetLeftTriggerState(m_leftTriggerState.Value);
 
-            ExecuteCommand(ref command);
+            PrecessAndExecuteCommand(ref command);
         }
 
         public void Reset()
@@ -134,28 +164,28 @@ namespace UniSense
             if (!MotorHasValue && !LeftTriggerHasValue && !RightTriggerHasValue)
                 return;
 
-            var command = DualSenseHIDOutputReport.Create();
+            var command = DualSenseUSBHIDOutputReport.Create();
             if (MotorHasValue) command.SetMotorSpeeds(m_LowFrequencyMotorSpeed.Value, m_HighFrequenceyMotorSpeed.Value);
             if (LeftTriggerHasValue) command.SetLeftTriggerState(m_leftTriggerState.Value);
             if (RightTriggerHasValue) command.SetRightTriggerState(m_rightTriggerState.Value);
 
-            ExecuteCommand(ref command);
+            PrecessAndExecuteCommand(ref command);
         }
 
         public override void SetLightBarColor(Color color)
         {
-            var command = DualSenseHIDOutputReport.Create();
+            var command = DualSenseUSBHIDOutputReport.Create();
             command.SetLightBarColor(color);
 
-            ExecuteCommand(ref command);
+            PrecessAndExecuteCommand(ref command);
         }
 
         public override void SetMotorSpeeds(float lowFrequency, float highFrequency)
         {
-            var command = DualSenseHIDOutputReport.Create();
+            var command = DualSenseUSBHIDOutputReport.Create();
             command.SetMotorSpeeds(lowFrequency, highFrequency);
 
-            ExecuteCommand(ref command);
+            PrecessAndExecuteCommand(ref command);
 
             m_LowFrequencyMotorSpeed = lowFrequency;
             m_HighFrequenceyMotorSpeed = highFrequency;
@@ -163,7 +193,7 @@ namespace UniSense
 
         public void SetGamepadState(DualSenseGamepadState state)
         {
-            var command = DualSenseHIDOutputReport.Create();
+            var command = DualSenseUSBHIDOutputReport.Create();
 
             if (state.LightBarColor.HasValue)
             {
@@ -211,7 +241,90 @@ namespace UniSense
                 command.SetPlayerLedState(playerLed);
             }
 
-            ExecuteCommand(ref command);
+            PrecessAndExecuteCommand(ref command);
+        }
+        
+        
+
+        private protected virtual void PrecessAndExecuteCommand(ref DualSenseUSBHIDOutputReport command)
+        {
+            if (!_isBt)
+            {
+                ExecuteCommand(ref command);
+                return;
+            }
+            
+            var btCommand = DualSenseBTHIDOutputReport.FromUSBReport(ref _btSeqNum, command);
+            unsafe
+            {
+                var s = new Span<byte>(&btCommand, sizeof(DualSenseBTHIDOutputReport));
+                var l = "";
+                foreach (var i in s)
+                {
+                    l += "0x" + i.ToString("X2") + " ";
+                }
+
+                Debug.Log(l);
+            }
+
+            ExecuteCommand(ref btCommand);
+        }
+        
+        public void OnNextUpdate()
+        { }
+
+        public unsafe void OnStateEvent(InputEventPtr eventPtr)
+        {
+            if (eventPtr.type != StateEvent.Type)
+            {
+                InputState.Change(this, eventPtr);
+                return;
+            }
+            
+            var stateEventPtr = (StateEvent*)eventPtr.data;
+
+            var reportId = *(byte*)stateEventPtr->state;
+
+            if (_isBt)
+            {
+                switch (reportId)
+                {
+                    case 0x01:
+                    {
+                        var minimalHid = *(DualSenseHIDMinimalInputReport*)stateEventPtr->state;
+                        minimalHid.ToHIDInputReport((DualSenseHIDInputReport*)stateEventPtr->state);
+                        break;
+                    }
+                    case 0x31 when !ValidateCrc(stateEventPtr):
+                        return;
+                    case 0x31:
+                    {
+                        var hidReport = *(DualSenseHIDInputReport*)((byte*)stateEventPtr->state + 1);
+                        hidReport.reportId = reportId;
+                        Unsafe.AsRef<DualSenseHIDInputReport>(stateEventPtr->state) = hidReport;
+                        break;
+                    }
+                }
+            }
+            
+            InputState.Change(this, eventPtr);
+        }
+
+        private static unsafe bool ValidateCrc(StateEvent* stateEventPtr)
+        {
+            var crcCalculated = Crc32LE.Calculate(uint.MaxValue, stackalloc byte[] { 0xA1 });
+            crcCalculated = ~Crc32LE.Calculate(crcCalculated, new Span<byte>(stateEventPtr->state, (int)(stateEventPtr->stateSizeInBytes - 4)));
+            var crcReceived = *(uint*)((byte*)stateEventPtr->state + stateEventPtr->stateSizeInBytes - 4);
+            if (crcCalculated == crcReceived)
+                return true;
+            Debug.LogAssertionFormat("Crc validation failed. Expected {0}, got {1}", crcCalculated, crcReceived);
+            return false;
+
+        }
+
+        public bool GetStateOffsetForEvent(InputControl control, InputEventPtr eventPtr, ref uint offset)
+        {
+            return false;
         }
 
         private float? m_LowFrequencyMotorSpeed;

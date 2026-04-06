@@ -1,9 +1,9 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using UnityEngine.InputSystem.Layouts;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.InputSystem.Utilities;
 
-namespace UniSense.LowLevel
+namespace DualForce.LowLevel
 {
     [StructLayout(LayoutKind.Explicit, Size = 64)]
     internal struct DualSenseHIDInputReport : IInputStateTypeInfo
@@ -108,6 +108,38 @@ namespace UniSense.LowLevel
         [FieldOffset(22)] public short accelX;
         [FieldOffset(24)] public short accelY;
         [FieldOffset(26)] public short accelZ;
+        /* 27
+         * 28
+         * 29
+         * 30 sensor_timestamp
+         * 31 reserved
+         * */
+// skip 4 for sensor_timestamp 
+// skip 1 for reserved
+
+        [InputControl(name = "touch0Id", layout = "Integer", bit = 0, sizeInBits = 7, format = "BIT")]
+        [InputControl(name = "touch0Active", layout = "Button", bit = 7, processors = "DualSenseTouchActive")]
+        [FieldOffset(33)]
+        public byte touch0Contact;
+        
+        [InputControl(name = "touch0Position", layout = "Vector2", format = "VC2S",
+            displayName = "Touch 0 Position", processors = "DualSenseTouch")]
+        [InputControl(name = "touch0Position/x", offset = 0, bit = 0, sizeInBits = 12, format = "BIT")]
+        [InputControl(name = "touch0Position/y", offset = 1, bit = 4, sizeInBits = 12, format = "BIT")]
+        [FieldOffset(34)]
+        public ushort touch0PositionAnchor;
+
+        [InputControl(name = "touch1Id", layout = "Integer", bit = 0, sizeInBits = 7, format = "BIT")]
+        [InputControl(name = "touch1Active", layout = "Button", bit = 7, processors = "DualSenseTouchActive")]
+        [FieldOffset(37)]
+        public byte touch1Contact;
+        
+        [InputControl(name = "touch1Position", layout = "Vector2", format = "VC2S",
+            displayName = "Touch 1 Position", processors = "DualSenseTouch")]
+        [InputControl(name = "touch1Position/x", offset = 0, bit = 0, sizeInBits = 12, format = "BIT")]
+        [InputControl(name = "touch1Position/y", offset = 1, bit = 4, sizeInBits = 12, format = "BIT")]
+        [FieldOffset(38)]
+        public ushort touch1PositionAnchor;
 
         [InputControl(name = "batteryCharging", layout = "Button", displayName = "Battery is Charging", bit = 3)]
         [FieldOffset(54)]

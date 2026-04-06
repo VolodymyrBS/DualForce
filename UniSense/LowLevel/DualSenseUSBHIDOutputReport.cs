@@ -1,57 +1,20 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.InputSystem.Utilities;
 
-namespace UniSense.LowLevel
+namespace DualForce.LowLevel
 {
     [StructLayout(LayoutKind.Explicit, Size = kSize)]
-    internal unsafe struct DualSenseHIDOutputReport : IInputDeviceCommandInfo
+    internal unsafe struct DualSenseUSBHIDOutputReport : IInputDeviceCommandInfo
     {
         public static FourCC Type => new FourCC('H', 'I', 'D', 'O');
 
         internal const int kSize = InputDeviceCommand.BaseCommandSize + 48;
         internal const int kTriggerParamSize = 9;
         internal const int kReportId = 2;
-
-        [Flags]
-        internal enum Flags1 : byte
-        {
-            MainMotors1 = 0x01,
-            MainMotors2 = 0x02,
-            RightTrigger = 0x04,
-            LeftTrigger = 0x08,
-        }
-
-        [Flags]
-        internal enum Flags2 : byte
-        {
-            MicLed = 0x01,
-            SetLightBarColor = 0x04,
-            PlayerLed = 0x10,
-        }
-
-        internal enum InternalMicLedState : byte
-        {
-            Off = 0x00,
-            On = 0x01,
-            Pulsating = 0x02,
-        }
-
-        [Flags]
-        internal enum LedFlags : byte
-        {
-            PlayerLedBrightness = 0x01,
-            LightBarFade        = 0x02,
-        }
-
-        internal enum InternalPlayerLedBrightness : byte
-        {
-            High = 0x0,
-            Medium = 0x1,
-            Low = 0x2,
-        }
 
         [FieldOffset(0)] public InputDeviceCommand baseCommand;
 
@@ -176,7 +139,11 @@ namespace UniSense.LowLevel
                     ClearTriggerParams(triggerParams);
                     break;
                 default:
-                    throw new ArgumentOutOfRangeException();
+                    var statePtr = state.AsSpan()[1..];
+                    triggerMode = (byte)state.EffectType;
+                    for (var i = 0; i < kTriggerParamSize; i++)
+                        triggerParams[i] = statePtr[i];
+                    break;
             }
         }
 
@@ -231,9 +198,9 @@ namespace UniSense.LowLevel
             ledPulseOption = 0x01;
         }
 
-        public static DualSenseHIDOutputReport Create()
+        public static DualSenseUSBHIDOutputReport Create()
         {
-            return new DualSenseHIDOutputReport
+            return new DualSenseUSBHIDOutputReport
             {
                 baseCommand = new InputDeviceCommand(Type, kSize),
                 reportId = kReportId,
