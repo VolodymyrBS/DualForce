@@ -38,7 +38,19 @@ namespace DualForce
         public Vector2Control touch1Position { get; protected set; }
         
         private byte _btSeqNum = 0;
-        private bool _isBt;
+        
+        public bool ConnectedWirelessly { get; private set; }
+        
+        /// <summary>
+        /// Determines if Dualsense is currently sending full data from all sensors (gyro, accelerometer, touchpad, etc.)
+        /// <remarks>
+        /// Always false for connection over USB.
+        /// For connection over Bluetooth controller starts in minimal mode and act as generic controller.
+        /// Any output command (triggers, lightbar, rumble, etc.) will wake it up and switch to full mode. 
+        /// </remarks>
+        /// </summary>
+        public bool LimitedMode { get; private set; }
+        
 #if UNITY_EDITOR
         static DualSenseGamepadHID()
         {
@@ -100,7 +112,8 @@ namespace DualForce
             touch1Position = GetChildControl<Vector2Control>("touch1Position");
 
             var hidDeviceDescriptor = HID.HIDDeviceDescriptor.FromJson(description.capabilities);
-            _isBt = hidDeviceDescriptor.inputReportSize > 64;
+            ConnectedWirelessly = hidDeviceDescriptor.inputReportSize > 64;
+            LimitedMode = ConnectedWirelessly;
             
             base.FinishSetup();
         }
@@ -248,25 +261,13 @@ namespace DualForce
 
         private protected virtual void PrecessAndExecuteCommand(ref DualSenseUSBHIDOutputReport command)
         {
-            if (!_isBt)
+            if (!ConnectedWirelessly)
             {
                 ExecuteCommand(ref command);
                 return;
             }
             
             var btCommand = DualSenseBTHIDOutputReport.FromUSBReport(ref _btSeqNum, command);
-            unsafe
-            {
-                var s = new Span<byte>(&btCommand, sizeof(DualSenseBTHIDOutputReport));
-                var l = "";
-                foreach (var i in s)
-                {
-                    l += "0x" + i.ToString("X2") + " ";
-                }
-
-                Debug.Log(l);
-            }
-
             ExecuteCommand(ref btCommand);
         }
         
@@ -285,7 +286,7 @@ namespace DualForce
 
             var reportId = *(byte*)stateEventPtr->state;
 
-            if (_isBt)
+            if (ConnectedWirelessly)
             {
                 switch (reportId)
                 {
@@ -299,6 +300,7 @@ namespace DualForce
                         return;
                     case 0x31:
                     {
+                        LimitedMode = false;
                         var hidReport = *(DualSenseHIDInputReport*)((byte*)stateEventPtr->state + 1);
                         hidReport.reportId = reportId;
                         Unsafe.AsRef<DualSenseHIDInputReport>(stateEventPtr->state) = hidReport;
